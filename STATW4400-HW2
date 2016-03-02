@@ -1,0 +1,180 @@
+#Inputs
+#w:  w[1:d] is the normal vector of a hyperplane, 
+#    w[d+1] = -c is the negative offset parameter. 
+#n: sample size
+
+#Outputs
+#S: n by (d+1) sample matrix with last col 1
+#y: vector of the associated class labels
+
+fakedata <- function(w, n){
+
+if(! require(MASS))
+{
+	install.packages("MASS")
+}
+if(! require(mvtnorm))
+{
+	install.packages("mvtnorm")
+}
+
+require(MASS)
+require(mvtnorm)
+
+# obtain dimension
+d <- length(w)-1
+
+# compute the offset vector and a Basis consisting of w and its nullspace
+offset <- -w[length(w)] * w[1:d] / sum(w[1:d]^2)
+Basis <- cbind(Null(w[1:d]), w[1:d])	 
+
+# Create samples, correct for offset, and extend
+# rmvnorm(n,mean,sigme) ~ generate n samples from N(0,I) distribution
+S <- rmvnorm(n, mean=rep(0,d),sigma = diag(1,d)) %*%  t(Basis) 
+S <- S + matrix(rep(offset,n),n,d,byrow=T)
+S <- cbind(S,1)
+
+# compute the class assignments
+y <- as.vector(sign(S %*% w))
+
+# add corrective factors to points that lie on the hyperplane.
+S[y==0,1:d] <- S[y==0,1:d] + runif(1,-0.5,0.5)*10^(-4)
+y = as.vector(sign(S %*% w))
+return(list(S=S, y=y))
+
+} # end function fakedata
+
+
+#Name: Yuchen Shi  UNI: ys2874  STATW4400  HW2
+#1. Linear Classification
+vh <- c(1/sqrt(2), 1/sqrt(2))
+c <- 1/(2*sqrt(2))
+x1 <- c(-3, 0)
+x2 <- c(1/2, 1/2)
+#1.1
+sign((x1 %*% vh)-c)
+sign((x2 %*% vh)-c)
+#1.2
+sign((x1 %*% vh)-c)
+sign((x2 %*% vh)-c)
+
+#2. Perceptron
+#2.1 Classify
+classify <- function(S, z){
+    y <- c()
+    for(i in 1:length(S[, 1])){
+        y[i] <- sign(t(z) %*% S[i,])
+    }
+    return(y)
+}
+library(MASS)
+library(mvtnorm)
+w<- c(vh, -c)
+f <- fakedata(w, 200)
+S <- f$S
+y <- f$y
+mean(classify(S, w) != f$y)
+
+#2.2 Perceptrain
+#first define a indicator function that will be used in Perceptron(S, z)
+I <- function(a, b){
+    if(a != b){
+        return(1)
+    }
+    else{
+        return(0)
+    }
+}
+perceptrain <- function(S, y){
+    indicator <- 1
+    k <- 1
+    z <- rnorm(length(S[1,]))
+    m <- matrix(nrow=0, ncol=length(z))
+    Z_history <- data.frame(m)
+    while(indicator != 0){
+        GradientCp <- rep(0, length(z))
+        Cp <- rep(0, length(z))
+        for(i in 1:length(S[,1])){
+            Cp <- Cp + I(sign(t(z) %*% S[i,]), y[i]) * abs(t(z) %*% S[i,])
+            GradientCp <- GradientCp + I(sign(t(z) %*% S[i,]), y[i]) * -y[i] * S[i,]
+        }
+        z <- z - (1/k)*GradientCp
+        Z_history[length(Z_history$X1)+1, ] <- z
+        k <- k+1
+        count=0
+        for(j in 1:length(Cp)){
+            if(Cp[j]==0){
+                count <- count +1
+            }
+        }
+        if(count==length(Cp)){
+            indicator <- 0
+        }
+    }
+    return(list(z=z, Z_history=Z_history))
+}
+#check that the Perceptrain function can classify well on fakedata
+z <- perceptrain(S, y)$z
+mean(classify(S,z) != y)
+
+#2.3 validation on fakedata
+z.random <- runif(3)
+f.random <- fakedata(z.random, 100)
+y.random <- f.random$y
+p.return <- perceptrain(f.random$S, f.random$y)
+returned_z <- p.return$z
+rerun.sample <- fakedata(z.random, 100)
+mean(classify(rerun.sample$S, returned_z) != rerun.sample$y)
+
+#2.4 Convert the data and plotting
+testdata.2D <- rerun.sample$S[, 1:2]
+rerun.y <- rerun.sample$y
+x.l <- seq(min(testdata.2D[,1])*0.95, max(testdata.2D[,1])*0.95, 0.01)
+y.l <- (-z.random[1]*x.l -z.random[3])/z.random[2]
+
+#plot showing the test data and classifier hyperplane
+plot(x.l, y.l, type = 'l')
+points(testdata.2D[,1][rerun.y==1], testdata.2D[,2][rerun.y==1], col='red')
+points(testdata.2D[,1][rerun.y==-1], testdata.2D[,2][rerun.y==-1], col='blue')
+
+#plot showing the training data and Z_history
+traindata.2D <- f.random$S[, 1:2]
+x.history <- seq(min(traindata.2D[,1]*0.95), max(traindata.2D[,1])*0.95, 0.01)
+y.history <- (-z.random[1]*x.history -z.random[3])/z.random[2]
+plot(x.history, y.history, type = 'l')
+for(i in 1:length(p.return$Z_history[, 1])){
+    y.history <- (-as.numeric(p.return$Z_history[i,][1])*x.l -as.numeric(p.return$Z_history[i,][3]))/as.numeric(p.return$Z_history[i,][2])
+    lines(x.l, y.history)
+}
+points(traindata.2D[,1][y.random==1], traindata.2D[,2][y.random==1], col='green')
+points(traindata.2D[,1][y.random==-1], traindata.2D[,2][y.random==-1], col='brown')
+
+
+#3.Support Vector Machines 
+library(e1071)
+setwd('/users/shiyuchen/desktop/STATW4400/uspsdata')
+data <- read.table('uspsdata.txt')
+label <- read.table('uspscl.txt')
+dat <- data.frame(x=data, y=as.factor(label$V1))
+train <- sample(200, 160)
+#linear SVM
+svm.linear.cv <- tune(svm, y~., data=dat[train,], kernel='linear', ranges=list(cost=c(0.0001, 0.001, 0.01, 0.1)))
+svm.linear <- svm(y~., data=dat[train,], kernel='linear', cost=0.001, scale=FALSE)
+linear.pred <- predict(svm.linear, dat[-train, ]) 
+mean(linear.pred != dat$y[-train])
+#SVM with RBF kernel
+svm.rbf.cv <- tune(svm, y~., data=dat[train, ], kernel='radial', ranges=list(cost=c(0.1, 1, 10, 100), gamma=c(0.0001, 0.001, 0.01, 0.1)))
+svm.rbf <- svm(y~., data=dat[train,], kernel='radial', cost=1, gamma=0.001)
+rbf.pred <- predict(svm.rbf, dat[-train, ])
+mean(rbf.pred != dat$y[-train])
+
+#Plot in linear case
+plot(log(summary(svm.linear.cv)$performance$cost)/log(10), summary(svm.linear.cv)$performance$error, type = 'l', 
+         main = 'Misclassification Rate vs Index of Margin Parameter in Linear SVM', xlab = 'Index of Margin Parameter', ylab = 'Misclassification Rate')
+points(log(summary(svm.linear.cv)$performance$cost)/log(10), summary(svm.linear.cv)$performance$error, pch=20, col='red')
+#plot in non-linear case
+library(scatterplot3d)
+scatterplot3d(log(summary(svm.rbf.cv)$performance$cost)/log(10), log(summary(svm.rbf.cv)$performance$gamma)/log(10), 
+              summary(svm.rbf.cv)$performance$error, type = 'h', color = 'red', pch=20, xlab = 'Index of Margin Parameter', 
+              ylab = 'Margin of Kernel Bandwidth', zlab = 'Misclassification rate', main = 'Misclassification Rate vs Margin Parameter and Kernel Bandwidth in the RBF-SVM.')
+
