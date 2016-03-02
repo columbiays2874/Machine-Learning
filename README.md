@@ -1,2 +1,2 @@
 # Machine-Learning
-STATW4400
+Columbia University STATW4400
