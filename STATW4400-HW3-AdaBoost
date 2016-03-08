@@ -1,1 +1,120 @@
 
+#Name: Yuchen Shi    UNI: ys2874    STATW4400    HW3
+#train function
+train <- function(X, w, y) {
+    mincost <- 1
+    for(j in 1:length(X[1,])){
+        for(i in 1:length(X[,j])) {
+            m <- sign(sum(y[X[,j]>X[i,j]]))
+            if(m != 0){
+                y_hat <- rep(0, length(X[, j]))
+                y_hat[X[,j]<=X[i,j]] <- -m
+                y_hat[X[,j]>X[i,j]] <- m
+                cost <- sum(w * (y_hat!=y))/sum(w)
+                if(cost < mincost){
+                    mincost <- cost
+                    j_star <- j
+                    theta <- X[i,j]
+                    mm <- m
+                }
+
+            }
+        }
+    }
+    return(list(j=j_star, theta=theta, m=mm))
+}
+
+#classify function
+classify <- function(X, pars){
+    y_hat <- rep(0, length(X[,pars$j]))
+    y_hat[X[,pars$j]<=pars$theta] <- -pars$m
+    y_hat[X[,pars$j]>pars$theta] <- pars$m
+    return(y_hat)
+}
+
+#agg_class function
+agg_class <- function(X, alpha, allpars) {
+    label_matrix <- matrix(nrow=length(alpha), ncol=length(X[,1]))
+    alllabel <- data.frame(label_matrix)
+    for(i in 1:length(alllabel[,1])){
+        pars_i <- list(j=allpars[i,]$X1, theta=allpars[i,]$X2, m=allpars[i,]$X3)
+        alllabel[i,] <- classify(X, pars_i)
+    }
+    vote_matrix <- alpha * alllabel
+    c_hat <- c()
+    for(i in 1:length(alllabel)){
+        c_hat[i] <- sign(sum(vote_matrix[i]))
+    }
+    return(c_hat)
+}
+
+#extra function that is used to produce alpha and allpars, which are 
+#used in the input of agg_class function
+produce_alpha_allpars <- function(X, w, y, B){
+    alpha <- c()
+    allpars <- matrix(ncol=3)
+    allpars <- data.frame(allpars_m)
+    weight <- w
+    for(b in 1:B){
+        pars <- train(X, weight, y)
+        error_b <- sum(weight * (classify(X, pars)!=y))/sum(weight)
+        alpha_b <- log((1-error_b)/error_b)
+        weight <- weight * exp(alpha_b * (classify(X, pars)!=y))
+        alpha[b] <- alpha_b
+        allpars[b,] <- t(matrix(pars))
+    }
+    return(list(alpha=alpha, allpars=allpars))
+}
+
+
+#read the uspsdata
+X <- read.table('/users/shiyuchen/desktop/STATW4400/uspsdata/uspsdata.txt')
+y <- read.table('/users/shiyuchen/desktop/STATW4400/uspsdata/uspscl.txt')
+y <- c(y$V1)
+#implementation of train function, classify function
+w <- rep(1/200, 200)
+pars <- train(X, w, y)
+label <- classify(X, pars)
+mean(label!=y)  #0.11
+#implementation of agg_class function
+l1 <- produce_alpha_allpars(X, w, y, 1)
+c_hat <- agg_class(X, l1$alpha, l1$allpars)
+mean(c_hat!=classify(X, pars))  #0
+
+#functions that perform cross validation on 1 to B weak learners.
+cv_error <- function(X, B) {
+    error_train <- data.frame(matrix(nrow=B, ncol=5))
+    error_validation <- data.frame(matrix(nrow=B, ncol=5))
+    cverror_train <- c()
+    cverror_validation <- c()
+    random <- sample(200,200)
+    for(i in 1:5){
+        v <- seq((i-1)*40+1, i*40)
+        validation <- random[v]
+        training <- random[-v]
+        w=rep(1/length(X[,1][training]), length(X[,1][training]))
+        l <- produce_alpha_allpars(X[training,], w, y[training], B)
+        for(j in 1:B){
+            error_validation[j, i] <- mean(agg_class(X[validation,], l$alpha[1:j], l$allpars[1:j,])!=y[validation])
+            error_train[j, i] <- mean(agg_class(X[training,], l$alpha[1:j], l$allpars[1:j,])!=y[training])
+        }
+    }
+    for(i in 1:length(error_validation[, 1])){
+        cverror_validation[i] <- mean(as.numeric(error_validation[i,]))
+        cverror_train[i] <- mean(as.numeric(error_train[i,]))
+    }
+    return(list(cverror_validation=cverror_validation, cverror_train=cverror_train))
+}
+
+error <- cv_error(X, 15)
+error_validation <- error$cverror_validation
+error_train <- error$cverror_train
+
+#plot of cross validation error as a function of b
+library(ggplot2)
+b <- seq(1, 15, 1)
+ggplot() + geom_line(aes(x=b, y=error_validation, colour="blue"))+
+    geom_line(aes(x=b, y=error_train, colour="red")) +
+    xlab('Number of Iterations') + ylab('Error') + 
+    ggtitle('Plot of Validation and Training Error VS Number of Iterations')
+                                            
